@@ -1,0 +1,6 @@
+*.x 
+*.o
+*.d
+*.a
+!fs_make.x
+!fs_ref.x
