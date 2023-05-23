@@ -29,13 +29,16 @@ struct rdir_entry{
 	int8_t padding[10];
 };
 
-
+struct file_descriptor{
+	uint8_t file_number;
+	size_t offset;
+};
 
 typedef int16_t fat_entry;
 
-
 struct super_block * cur_super_block;
 
+struct file_descriptor open_files[FS_OPEN_MAX_COUNT] = {{.file_number = 0xFF, .offset = 0}};
 
 
 int fs_mount(const char *diskname)
@@ -92,6 +95,12 @@ int get_free_fat(){
 
 int fs_umount(void)
 {
+	for (int i = 0; i < FS_OPEN_MAX_COUNT; i++){
+		if(open_files[i].file_number != 0xFF){
+			return -1;
+		}
+	}
+	memset(cur_super_block, 0, sizeof(struct super_block));
 	return block_disk_close();
 	/* TODO: Phase 1 */
 }
@@ -235,24 +244,67 @@ int fs_ls(void)
 int fs_open(const char *filename)
 {
 	/* TODO: Phase 3 */
-	return 0;
+	if (cur_super_block == NULL || strlen(filename) >= FS_FILENAME_LEN){
+		return -1;
+	}
+	struct rdir_entry entries[FS_FILE_MAX_COUNT];
+	block_read(cur_super_block->root_index, &entries);
+	//get first open fd, or returns -1 if none is found
+	int fd;
+	bool open_files_full = true;
+	for(fd = 0; fd < FS_OPEN_MAX_COUNT; fd++){
+		if(open_files[fd].file_number == 0xFF){
+			open_files_full = false;
+			break;
+		}
+	}
+	if(open_files_full){
+		return -1;
+	}
+
+	//assigns file number to fd
+	int i;
+	bool missing = true;
+	for (i = 0; i < FS_FILE_MAX_COUNT; i++){
+		if (strncmp(entries[i].file_name, filename, strlen(filename))){
+			missing = false;
+			break;
+		}
+	}
+	if(missing){
+		return -1;
+	}
+	open_files[fd].file_number = i;
+	open_files[fd].offset = 0;
+
+	return fd;
 }
 
 int fs_close(int fd)
 {
 	/* TODO: Phase 3 */
+	if (cur_super_block == NULL || open_files[fd].file_number == 0xFF){
+		return -1;
+	}
+	open_files[fd].file_number == 0xFF;
+	open_files[fd].offset = 0;
 	return 0;
 }
 
 int fs_stat(int fd)
 {
-	/* TODO: Phase 3 */
-	return 0;
+	struct rdir_entry entries[FS_FILE_MAX_COUNT];
+	block_read(cur_super_block->root_index, &entries);
+	return entries[open_files[fd].file_number].file_size;
 }
 
 int fs_lseek(int fd, size_t offset)
 {
 	/* TODO: Phase 3 */
+	if(fd >= FS_OPEN_MAX_COUNT || (open_files[fd].file_number == 0xFF)){
+		return -1;
+	}
+	open_files[fd].offset = offset;
 	return 0;
 }
 

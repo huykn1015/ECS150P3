@@ -3,5 +3,6 @@
 *.d
 *.a
 *.txt
+*.fs
 !fs_make.x
 !fs_ref.x
