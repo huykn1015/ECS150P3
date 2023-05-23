@@ -13,4 +13,5 @@
 
 int main(){
     fs_mount("test.fs");
+    fs_info();
 }
