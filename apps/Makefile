@@ -9,9 +9,11 @@ programs := \
 FSLIB := libfs
 FSPATH := ../$(FSLIB)
 libfs := $(FSPATH)/$(FSLIB).a
-
+RM = rm -f
 # Default rule
 all: $(programs)
+	-$(RM) $(deps)
+	-$(RM) $(objs)
 
 # Avoid builtin rules and variables
 MAKEFLAGS += -rR
@@ -30,7 +32,7 @@ CC	= gcc
 
 # General gcc options
 CFLAGS	:= -Wall -Werror
-CFLAGS	+= -pipe
+#CFLAGS	+= -pipe
 ## Debug flag
 ifneq ($(D),1)
 CFLAGS	+= -O2

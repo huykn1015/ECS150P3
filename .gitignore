@@ -1,8 +1,9 @@
-*.x 
-*.o
-*.d
-*.a
-*.txt
-*.fs
+**/*.x 
+**/*.o
+**/*.d
+**/*.a
+**/*.txt
+**/*.fs
 !fs_make.x
 !fs_ref.x
+apps/test.fs

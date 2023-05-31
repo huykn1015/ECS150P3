@@ -11,6 +11,7 @@
 
 #define EOC 0xFFFF
 
+
 /* TODO: Phase 1 */
 struct super_block{
 	uint8_t signature[8];
@@ -40,7 +41,168 @@ struct super_block * cur_super_block;
 
 struct file_descriptor open_files[FS_OPEN_MAX_COUNT] = {{.file_number = 0xFF, .offset = 0}};
 
+/**
+ * get_fat_page - get FAT page of index
+ * @index: Entry to be searched for
+ * @entries: Array to write FAT page into
+ * 
+ * Reads the FAT page where index is located and writes it into entries
+*/
+void get_fat_page(int16_t index, fat_entry * entries){
+	int i = 1;
+	while(index > BLOCK_SIZE / 2){
+		index -= BLOCK_SIZE / 2;
+	}
+	block_read(i, entries);
+}
+/**
+ * block_index - return data index 
+ * @fd: File desciptor
+ * @offset: File offse
+ * 
+ * Returns data index of file where offset is
+*/
+int block_index(int fd, size_t offset){
+	int fn = open_files[fd].file_number;
+	struct rdir_entry entries[FS_FILE_MAX_COUNT];
+	block_read(cur_super_block->root_index, &entries);	
+	int data_index = entries[fn].data_index;
+	int block_count = offset / BLOCK_SIZE;
+	while(data_index != EOC && block_count > 0){
+		fat_entry entries[BLOCK_SIZE / 2];
+		fat_entry old_index = data_index;
+		get_fat_page(data_index, (fat_entry * )&entries);
+		data_index = entries[data_index % (BLOCK_SIZE / 2)];
+		block_count--;
+	}
+	return data_index;
+}
 
+/**
+ * create_file_entry - create file entry in root dir
+ * @entries: Root dir entries array
+ * @filename: Name of new file
+ * 
+ * Creates a new entry in root directory for the file
+ * Returns -1 if unsuccessful, Returns 0 if successful 
+*/
+int create_file_entry(struct rdir_entry * entries, const char * filename){
+	int i;
+	bool rdir_full = true;
+	if(!cur_super_block){
+		return -1;
+	}
+	for (i = 0; i < FS_FILE_MAX_COUNT; i++){
+		if (entries[i].file_name[0] == 0){
+			rdir_full = false;
+			break;
+		}
+	}
+	if(rdir_full){
+		return -1;
+	}
+	strcpy(entries[i].file_name, filename);
+	entries[i].data_index = EOC;
+	entries[i].file_size = 0;
+	return 0;
+}
+
+/**
+ * clear_fat - clears all FAT entries of a file
+ * @data_index: index of FAT entry of the file
+ * 
+ * sets all fat entries of a file to 0
+*/
+int clear_fat(uint16_t data_index){
+	while(data_index != EOC){
+		fat_entry entries[BLOCK_SIZE / 2];
+		fat_entry old_index = data_index;
+		get_fat_page(data_index, (fat_entry * )&entries);
+		data_index = entries[data_index % (BLOCK_SIZE / 2)];
+		entries[old_index] = 0;	
+	}
+	return 0;
+}
+
+/**
+ * get_free_rdir_count - get count of free root dir entries
+ * 
+ * returns number of empty entries in root dir
+*/
+int get_free_rdir_count(){
+	struct rdir_entry entries[FS_FILE_MAX_COUNT];
+	int free_files = 0;
+	if(!cur_super_block){
+		return -1;
+	}
+	block_read(cur_super_block->root_index, &entries);
+	for (int i = 0; i < FS_FILE_MAX_COUNT; i++){
+		if (entries[i].file_name[0] == 0){
+			free_files++;
+		}
+	}
+	return free_files;
+}
+
+/**
+ * get_free_fat - get count of free fat entries
+ * 
+ * returns number of free fat entries
+*/
+int get_free_fat(){
+	int free_entries = 0;
+	if(!cur_super_block){
+		return -1;
+	}
+	for(int i = 1; i <= cur_super_block->fat_count; i++){
+		fat_entry entries[BLOCK_SIZE / 2];
+		block_read(i, &entries);
+		for (int j = 0; j < BLOCK_SIZE / 2; j ++){
+			if (entries[j] == 0){
+				free_entries++;
+			}
+		}
+	}
+	return free_entries;
+}
+
+/**
+ * get_free_fat_index - get first free fat index
+ * 
+ * returns index of first empty FAT entry
+*/
+int get_free_fat_index(){
+	if(!cur_super_block){
+		return -1;
+	}
+	for(int i = 1; i <= cur_super_block->fat_count; i++){
+		fat_entry entries[BLOCK_SIZE / 2];
+		block_read(i, &entries);
+		for (int j = 0; j < BLOCK_SIZE / 2; j ++){
+			if (entries[j] == 0){
+				return (BLOCK_SIZE / 2 * (i - 1) + j);
+			}
+		}
+	}
+	return -1;
+}
+
+int delete_rdir_entry(struct rdir_entry * entries, const char * filename){
+	int i;
+	bool missing = true;
+	for (i = 0; i < FS_FILE_MAX_COUNT; i++){
+		if (strncmp(entries[i].file_name, filename, strlen(filename))){
+			missing = false;
+			break;
+		}
+	}
+	if(missing){
+		return -1;
+	}
+	clear_fat(entries[i].data_index);
+	memset(&entries[i], 0, sizeof(struct rdir_entry));
+	return 0;
+}
 int fs_mount(const char *diskname)
 {
 	if (block_disk_open(diskname)){
@@ -61,37 +223,6 @@ int fs_mount(const char *diskname)
 
 }
 
-int get_free_rdir_count(){
-	struct rdir_entry entries[FS_FILE_MAX_COUNT];
-	int free_files = 0;
-	if(!cur_super_block){
-		return -1;
-	}
-	block_read(cur_super_block->root_index, &entries);
-	for (int i = 0; i < FS_FILE_MAX_COUNT; i++){
-		if (entries[i].file_name[0] == 0){
-			free_files++;
-		}
-	}
-	return free_files;
-}
-
-int get_free_fat(){
-	int free_entries = 0;
-	if(!cur_super_block){
-		return -1;
-	}
-	for(int i = 1; i <= cur_super_block->fat_count; i++){
-		fat_entry entries[BLOCK_SIZE / 2];
-		block_read(i, &entries);
-		for (int j = 0; j < BLOCK_SIZE / 2; j ++){
-			if (entries[j] == 0){
-				free_entries++;
-			}
-		}
-	}
-	return free_entries;
-}
 
 int fs_umount(void)
 {
@@ -119,79 +250,6 @@ int fs_info(void)
 	printf("fat_free_ratio=%i/%i\n", get_free_fat(), cur_super_block->fat_count * 4096 / 2);
 	printf("rdir_free_ratio=%i/%i\n", get_free_rdir_count(), FS_FILE_MAX_COUNT);
 	/* TODO: Phase 1 */
-	return 0;
-}
-
-int get_free_fat_index(){
-	if(!cur_super_block){
-		return -1;
-	}
-	for(int i = 1; i <= cur_super_block->fat_count; i++){
-		fat_entry entries[BLOCK_SIZE / 2];
-		block_read(i, &entries);
-		for (int j = 0; j < BLOCK_SIZE / 2; j ++){
-			if (entries[j] == 0){
-				return (BLOCK_SIZE / 2 * (i - 1) + j);
-			}
-		}
-	}
-	return -1;
-}
-
-int create_file_entry(struct rdir_entry * entries, const char * filename){
-	int i;
-	bool rdir_full = true;
-	if(!cur_super_block){
-		return -1;
-	}
-	for (i = 0; i < FS_FILE_MAX_COUNT; i++){
-		if (entries[i].file_name[0] == 0){
-			rdir_full = false;
-			break;
-		}
-	}
-	if(rdir_full){
-		return -1;
-	}
-	strcpy(entries[i].file_name, filename);
-	entries[i].data_index = EOC;
-	entries[i].file_size = 0;
-	return 0;
-}
-
-void get_fat_page(int16_t index, fat_entry * entries){
-	int i = 1;
-	while(index > BLOCK_SIZE / 2){
-		index -= BLOCK_SIZE / 2;
-	}
-	block_read(i, entries);
-}
-
-int clear_fat(uint16_t data_index){
-	while(data_index != EOC){
-		fat_entry entries[BLOCK_SIZE / 2];
-		fat_entry old_index = data_index;
-		get_fat_page(data_index, (fat_entry * )&entries);
-		data_index = data_index % (BLOCK_SIZE / 2);
-		entries[old_index] = 0;	
-	}
-	return 0;
-}
-
-int delete_rdir_entry(struct rdir_entry * entries, const char * filename){
-	int i;
-	bool missing = true;
-	for (i = 0; i < FS_FILE_MAX_COUNT; i++){
-		if (strncmp(entries[i].file_name, filename, strlen(filename))){
-			missing = false;
-			break;
-		}
-	}
-	if(missing){
-		return -1;
-	}
-	clear_fat(entries[i].data_index);
-	memset(&entries[i], 0, sizeof(struct rdir_entry));
 	return 0;
 }
 
@@ -311,12 +369,43 @@ int fs_lseek(int fd, size_t offset)
 int fs_write(int fd, void *buf, size_t count)
 {
 	/* TODO: Phase 4 */
+
+
+
+
 	return 0;
 }
+
+
 
 int fs_read(int fd, void *buf, size_t count)
 {
 	/* TODO: Phase 4 */
+
+	//create buff size of count
+	int rcount = 0;
+	int8_t * rbuf = malloc(sizeof(int8_t) * count);
+	int8_t inbuf[BLOCK_SIZE];
+	block_read(block_index(fd, 0), &inbuf);
+	memcpy(buf, &inbuf + open_files[fd].offset, BLOCK_SIZE);
+	buf += BLOCK_SIZE;
+	if (count + open_files[fd].offset <= BLOCK_SIZE){
+		open_files[fd].offset += count;
+		return 0;
+	}
+	rcount += BLOCK_SIZE - open_files[fd].offset;
+	open_files[fd].offset += rcount;
+	while (rcount + BLOCK_SIZE < count){
+		block_read(block_index(fd, rcount), &inbuf);
+		memcpy(buf, inbuf, BLOCK_SIZE);
+		buf += BLOCK_SIZE;
+		rcount += BLOCK_SIZE;
+		open_files[fd].offset += BLOCK_SIZE;
+	}
+
+	block_read(block_index(fd, rcount), &inbuf);
+	memcpy(buf, inbuf, count - rcount);
+	open_files[fd].offset += count - rcount;
 	return 0;
 }
 
