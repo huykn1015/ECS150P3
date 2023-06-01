@@ -60,7 +60,7 @@ void get_fat_page(int16_t index, fat_entry * entries){
 }
 /**
  * write_fat_page - get FAT page of index
- * @index: Entry to be searched for
+ * @index: Index to be updated
  * @entries: Array to write FAT page into
  * 
  * Reads the FAT page where index is located and writes it into entries
@@ -92,6 +92,7 @@ int get_free_fat_index(){
 	}
 	return -1;
 }
+
 /**
  * allocate_data_block - allocates a new data block on the FAT table
  * @fd: File desciptor of file to be extended
@@ -125,6 +126,7 @@ int allocate_data_block(int fd){
 	block_write(cur_super_block->root_index, rdir);	
 	return data_index;
 }
+
 /**
  * block_index - return data index 
  * @fd: File desciptor
@@ -391,7 +393,6 @@ int fs_ls(void){
 				   entries[i].file_size, entries[i].data_index);
 		}
 	}
-
 	return 0;
 }
 
@@ -464,9 +465,9 @@ int fs_write(int fd, void *buf, size_t count){
 	uint8_t wbuf[BLOCK_SIZE];
 	if (count + (open_files[fd].offset % BLOCK_SIZE) > BLOCK_SIZE){
 		block_read(block_index(fd, open_files[fd].offset), &wbuf);
-		memcpy(&wbuf + open_files[fd].offset , buf, BLOCK_SIZE - open_files[fd].offset);
+		memcpy(&wbuf + open_files[fd].offset , buf, BLOCK_SIZE - (open_files[fd].offset % BLOCK_SIZE));
 		block_write(block_index(fd,open_files[fd].offset), &wbuf);
-		increase_file_size(fd, BLOCK_SIZE - open_files[fd].offset);
+		increase_file_size(fd, BLOCK_SIZE - (open_files[fd].offset % BLOCK_SIZE));
 	}
 	else{
 		block_read(block_index(fd, open_files[fd].offset), wbuf);
@@ -476,7 +477,7 @@ int fs_write(int fd, void *buf, size_t count){
 		open_files[fd].offset += count;
 		return count;
 	}
-	wcount = BLOCK_SIZE - open_files[fd].offset;
+	wcount = BLOCK_SIZE - open_files[fd].offset % BLOCK_SIZE;
 	buf += wcount;
 	open_files[fd].offset += wcount;
 	int new_index = next_block(fd, block_index(fd, 0));
@@ -486,6 +487,7 @@ int fs_write(int fd, void *buf, size_t count){
 		block_write(new_index, wbuf);
 		increase_file_size(fd, BLOCK_SIZE);
 		new_index = next_block(fd, new_index);
+		wcount+= BLOCK_SIZE;
 	}
 	memset(&wbuf, 0, sizeof(wbuf));
 	memcpy(&wbuf, buf, count - wcount);
@@ -508,7 +510,7 @@ int fs_read(int fd, void *buf, size_t count){
 	}
 	if(count + (open_files[fd].offset % BLOCK_SIZE) > BLOCK_SIZE){
 		block_read(block_index(fd, open_files[fd].offset), &inbuf);
-		memcpy(buf, (char *) &inbuf[(open_files[fd].offset % BLOCK_SIZE)], BLOCK_SIZE - open_files[fd].offset);
+		memcpy(buf, (char *) &inbuf[(open_files[fd].offset % BLOCK_SIZE)], BLOCK_SIZE - (open_files[fd].offset % BLOCK_SIZE));
 	}
 	else{
 		block_read(block_index(fd, open_files[fd].offset), &inbuf);
@@ -516,17 +518,18 @@ int fs_read(int fd, void *buf, size_t count){
 		open_files[fd].offset += count;
 		return count;
 	}
-	rcount += BLOCK_SIZE - open_files[fd].offset;
+	rcount = BLOCK_SIZE - (open_files[fd].offset % BLOCK_SIZE);
 	buf += rcount;
 	open_files[fd].offset += rcount;
 	while (rcount + BLOCK_SIZE < count){
-		block_read(block_index(fd, rcount), &inbuf);
+		block_read(block_index(fd, open_files[fd].offset), &inbuf);
 		memcpy(buf, &inbuf, BLOCK_SIZE);
 		buf += BLOCK_SIZE;
 		rcount += BLOCK_SIZE;
 		open_files[fd].offset += BLOCK_SIZE;
 	}
-	block_read(block_index(fd, rcount), &inbuf);
+	memset(&inbuf, 0, sizeof(inbuf));
+	block_read(block_index(fd, open_files[fd].offset), &inbuf);
 	memcpy(buf, inbuf, count - rcount);
 	open_files[fd].offset += count - rcount;
 	return rcount;
