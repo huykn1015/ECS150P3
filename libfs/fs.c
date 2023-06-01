@@ -346,12 +346,16 @@ int fs_mount(const char *diskname){
 
 
 int fs_umount(void){
+	if(!cur_super_block){
+		return -1;
+	}
 	for (int i = 0; i < FS_OPEN_MAX_COUNT; i++){
 		if(open_files[i].file_number != 0xFF){
 			return -1;
 		}
 	}
-	memset(cur_super_block, 0, sizeof(struct super_block));
+	memset(cur_super_block, 0, sizeof(uint8_t) * BLOCK_SIZE);
+	cur_super_block = NULL;
 	return block_disk_close();
 	/* TODO: Phase 1 */
 }
