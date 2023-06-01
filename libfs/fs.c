@@ -39,7 +39,7 @@ typedef int16_t fat_entry;
 
 struct super_block * cur_super_block;
 
-struct file_descriptor open_files[FS_OPEN_MAX_COUNT] = {{.file_number = 0xFF, .offset = 0}};
+struct file_descriptor open_files[FS_OPEN_MAX_COUNT];// = {{.file_number = 0xFF, .offset = 0}};
 
 
 // HELPER FUNCTIONS
@@ -59,6 +59,20 @@ void get_fat_page(int16_t index, fat_entry * entries){
 	block_read(i, entries);
 }
 /**
+ * write_fat_page - get FAT page of index
+ * @index: Entry to be searched for
+ * @entries: Array to write FAT page into
+ * 
+ * Reads the FAT page where index is located and writes it into entries
+*/
+void write_fat_page(int16_t index, fat_entry * entries){
+	int i = 1;
+	while(index > BLOCK_SIZE / 2){
+		index -= BLOCK_SIZE / 2;
+	}
+	block_write(i, entries);
+}
+/**
  * get_free_fat_index - get first free fat index
  * 
  * returns index of first empty FAT entry
@@ -72,7 +86,7 @@ int get_free_fat_index(){
 		block_read(i, &entries);
 		for (int j = 0; j < BLOCK_SIZE / 2; j ++){
 			if (entries[j] == 0){
-				return (BLOCK_SIZE / 2 * (i - 1) + j);
+				return ((BLOCK_SIZE / 2 * (i - 1)) + j);
 			}
 		}
 	}
@@ -103,10 +117,12 @@ int allocate_data_block(int fd){
 	}
 	else{
 		entries[old_index % (BLOCK_SIZE / 2)] = data_index;
+		write_fat_page(old_index, (short int *)&entries);
 	}
 	get_fat_page(data_index, (fat_entry * )&entries);
 	entries[data_index % (BLOCK_SIZE / 2)] = EOC;
-	block_write(cur_super_block->root_index, entries);	
+	write_fat_page(data_index, (short int *)&entries);
+	block_write(cur_super_block->root_index, rdir);	
 	return data_index;
 }
 /**
@@ -119,17 +135,11 @@ int allocate_data_block(int fd){
 int block_index(int fd, size_t offset){
 	int fn = open_files[fd].file_number;
 	struct rdir_entry entries[FS_FILE_MAX_COUNT];
-	block_read(cur_super_block->root_index, &entries);	
+	block_read(cur_super_block->root_index, &entries);
 	uint16_t data_index = entries[fn].data_index;
 	if(entries[fn].file_size < offset){
 		return -1;
 	}
-	if(data_index == EOC){
-		data_index = allocate_data_block(fd);
-		return data_index;
-	}
-
-
 	int block_count = offset / BLOCK_SIZE;
 	while(data_index != EOC && block_count > 0){
 		fat_entry entries[BLOCK_SIZE / 2];
@@ -138,7 +148,7 @@ int block_index(int fd, size_t offset){
 		data_index = entries[data_index % (BLOCK_SIZE / 2)];
 		block_count--;
 	}
-	return data_index;
+	return data_index + cur_super_block->root_index + 1;
 }
 
 /**
@@ -264,13 +274,14 @@ int delete_rdir_entry(struct rdir_entry * entries, const char * filename){
  * this function will allocate a new block and return its index instead
 */
 int next_block(int fd, int cur_index){
+	cur_index -= cur_super_block->root_index + 1;
 	fat_entry entries[BLOCK_SIZE / 2];
 	get_fat_page(cur_index, (fat_entry * )&entries);
-	int next_index = entries[cur_index % (BLOCK_SIZE / 2)];
+	uint16_t next_index = entries[cur_index % (BLOCK_SIZE / 2)];
 	if(next_index == EOC){
 		next_index = allocate_data_block(fd);
 	}
-	return next_index;
+	return next_index + cur_super_block->root_index + 1;
 }
 
 
@@ -309,6 +320,9 @@ int fs_mount(const char *diskname){
 	if((int)block_disk_count() != (int)cur_super_block->block_count){
 		printf("x: %i\n", block_disk_count());
 		return -1;
+	}
+	for(int i = 0; i <FS_OPEN_MAX_COUNT; i ++ ){
+		open_files[i].file_number = 0xFF;
 	}
 	return 0;
 
@@ -401,7 +415,7 @@ int fs_open(const char *filename){
 	int i;
 	bool missing = true;
 	for (i = 0; i < FS_FILE_MAX_COUNT; i++){
-		if (strncmp(entries[i].file_name, filename, strlen(filename))){
+		if (!strncmp(entries[i].file_name, filename, strlen(filename))){
 			missing = false;
 			break;
 		}
@@ -411,7 +425,6 @@ int fs_open(const char *filename){
 	}
 	open_files[fd].file_number = i;
 	open_files[fd].offset = 0;
-
 	return fd;
 }
 
@@ -441,6 +454,13 @@ int fs_lseek(int fd, size_t offset)
 
 int fs_write(int fd, void *buf, size_t count){
 	int wcount = 0;
+    int fn = open_files[fd].file_number;
+    struct rdir_entry rdir[FS_FILE_MAX_COUNT];
+    block_read(cur_super_block->root_index, &rdir);	
+    uint16_t data_index = rdir[fn].data_index;
+    if(data_index == EOC){
+        allocate_data_block(fd);
+    }
 	uint8_t wbuf[BLOCK_SIZE];
 	if (count + (open_files[fd].offset % BLOCK_SIZE) > BLOCK_SIZE){
 		block_read(block_index(fd, open_files[fd].offset), &wbuf);
@@ -452,8 +472,9 @@ int fs_write(int fd, void *buf, size_t count){
 		block_read(block_index(fd, open_files[fd].offset), wbuf);
 		memcpy(&wbuf + open_files[fd].offset , buf, count);
 		block_write(block_index(fd,0), wbuf);
-		increase_file_size(fd, BLOCK_SIZE - open_files[fd].offset);
-		return 0;
+		increase_file_size(fd, count);
+		open_files[fd].offset += count;
+		return count;
 	}
 	wcount = BLOCK_SIZE - open_files[fd].offset;
 	buf += wcount;
@@ -470,7 +491,7 @@ int fs_write(int fd, void *buf, size_t count){
 	memcpy(&wbuf, buf, count - wcount);
 	block_write(new_index, &wbuf);
 	increase_file_size(fd, count - wcount);
-	return 0;
+	return wcount;
 }
 
 
@@ -478,15 +499,22 @@ int fs_write(int fd, void *buf, size_t count){
 int fs_read(int fd, void *buf, size_t count){
 	int rcount = 0;
 	int8_t inbuf[BLOCK_SIZE];
+    int fn = open_files[fd].file_number;
+    struct rdir_entry rdir[FS_FILE_MAX_COUNT];
+    block_read(cur_super_block->root_index, &rdir);	
+	int file_size = rdir[fn].file_size;
+	if(open_files[fd].offset + count > file_size){
+		return -1;
+	}
 	if(count + (open_files[fd].offset % BLOCK_SIZE) > BLOCK_SIZE){
 		block_read(block_index(fd, open_files[fd].offset), &inbuf);
-		memcpy(buf, &inbuf + open_files[fd].offset, BLOCK_SIZE - open_files[fd].offset);
+		memcpy(buf, (char *) &inbuf[(open_files[fd].offset % BLOCK_SIZE)], BLOCK_SIZE - open_files[fd].offset);
 	}
 	else{
 		block_read(block_index(fd, open_files[fd].offset), &inbuf);
-		memcpy(buf, &inbuf + open_files[fd].offset, count);
+		memcpy(buf, (char *) &inbuf[(open_files[fd].offset % BLOCK_SIZE)], count);
 		open_files[fd].offset += count;
-		return 0;
+		return count;
 	}
 	rcount += BLOCK_SIZE - open_files[fd].offset;
 	buf += rcount;
@@ -498,10 +526,8 @@ int fs_read(int fd, void *buf, size_t count){
 		rcount += BLOCK_SIZE;
 		open_files[fd].offset += BLOCK_SIZE;
 	}
-
 	block_read(block_index(fd, rcount), &inbuf);
 	memcpy(buf, inbuf, count - rcount);
 	open_files[fd].offset += count - rcount;
-	return 0;
+	return rcount;
 }
-
