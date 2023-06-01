@@ -53,6 +53,48 @@ int test_basic(){
     return 0;
 }
 
+int test_full_rdir(){
+    if(fs_mount("test_rdir.fs")){
+        printf("open failed\n");
+        return -1;
+    }
+    printf("rdir test\n");
+    char name[9] = "File_.txt";
+    for( int i = 0; i < 128; i ++){
+        name[4] = i;
+        fs_create(name);
+    }
+    if(!fs_create("idk.txt")){
+        printf("create error\n");
+    }
+    else{
+        printf("rdir full\n");
+    }
+    fs_umount();
+    return 0;
+}
+
+int test_open_file_max(){
+    if(fs_mount("test_rdir.fs")){
+        printf("open failed\n");
+        return -1;
+    }
+    char name[9] = "File_.txt";
+    for( int i = 0; i < 32; i ++){
+        name[4] = i;
+        int f = fs_open(name);
+        if(f == -1){
+            printf("failure\n");
+        }
+    }
+    int fd = fs_open("File1.txt");
+    if(fd == -1){
+        printf("open files full\n");
+    }
+    return 0;
+}
+
+
 int test_inter_block_write(){
     return 0;
 }
@@ -81,6 +123,8 @@ int test_no_space_write(){
 int main(){
 
     test_basic();
+    test_full_rdir();
+    test_open_file_max();
     return 0;
 
 
