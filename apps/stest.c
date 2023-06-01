@@ -23,7 +23,7 @@ int main(){
     char buf[100];
     fs_read(fd, &buf, 6);
     printf("S: %s\n", buf);
-
+    fs_close(fd);
 
     int fd2 = fs_open("hi.txt");
     char buf1[4] = {'H', 'i', 'i', '\0'};
@@ -34,21 +34,31 @@ int main(){
     fs_lseek(fd2, 0);
     fs_read(fd2, &buf2, 4);
     printf("S: %s\n", buf2);
+    fs_close(fd2);
 
     int fd3 = fs_open("whatever.txt");
     char buf3[100];
 
-	char data[5000];
-    memset(&data, 97, 5000);
-    data[4999] = '\0';
+	char data[10000];
+    memset(&data, 97, 10000);
+    data[9999] = '\0';
     fs_write(fd3, &data, sizeof(data));
-    fs_lseek(fd3, 4095);
+    fs_ls();
+    fs_lseek(fd3, 8191);
+    fs_info();
+
     fs_read(fd3, &buf3, 10);
     printf("S: %s\n", buf3);
-
-
+    if(!fs_umount()){
+        printf("Unmount error\n");
+    }
+    else{
+        printf("open files\n");
+    }
+    fs_close(fd3);
     fs_info();
     fs_delete("whatever.txt");
     fs_delete("test.txt");
     fs_ls();
+    fs_umount();
 }
