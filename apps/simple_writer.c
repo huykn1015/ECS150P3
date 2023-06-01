@@ -43,6 +43,6 @@ int main(int argc, char *argv[])
 	/* Close file and unmount */
 	fs_close(fd);
 	fs_umount();
-
+	printf("Simple Writer Passed\n");
 	return 0;
 }

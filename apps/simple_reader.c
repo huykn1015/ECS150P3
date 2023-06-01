@@ -43,5 +43,6 @@ int main(int argc, char *argv[])
 	fs_close(fd);
 	fs_umount();
 
+	printf("Simple Reader Passed\n");
 	return 0;
 }

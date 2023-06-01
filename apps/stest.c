@@ -11,19 +11,80 @@
 
 #include <fs.h>
 
-int main(){
+
+int test_basic(){
     fs_mount("test.fs");
+    if(!fs_mount("test2.fs")){
+       printf("Mount error\n"); 
+    }
+    else{
+        printf("Another FS currently open\n");
+    }
     fs_info();
-    fs_ls();
-    fs_create("hi.txt");
-    fs_create("idk.txt");
-    fs_create("whatever.txt");
     fs_ls();
     int fd = fs_open("test.txt");
     char buf[100];
     fs_read(fd, &buf, 6);
-    printf("S: %s\n", buf);
+    printf("Read: %s\n", buf);
+    printf("Size: %i\n", fs_stat(fd));
+    fs_create("hi.txt");
+    fs_create("idk.txt");
+    fs_create("whatever.txt");
+    fs_ls();
+    fs_delete("text.txt");
+    fs_ls();
+    fs_info();
+    if(!fs_umount()){
+        printf("Unmount error\n");
+    }
+    else{
+        printf("Files currently open\n");
+    }
     fs_close(fd);
+    if(!fs_umount()){
+        printf("Unmount Successful\n");
+    }
+    else{
+        printf("Unmount failed\n");
+    }
+    if(!fs_umount()){
+        printf("Unmount error\n");
+    }
+    return 0;
+}
+
+int test_inter_block_write(){
+    return 0;
+}
+
+int test_inter_block_read(){
+    return 0;
+}
+
+int test_multi_block_write(){
+    return 0;
+}
+
+int test_multi_block_read(){
+    return 0;
+}
+
+int test_eof_read(){
+    return 0;
+}
+
+int test_no_space_write(){
+    return 0;
+}
+
+
+int main(){
+
+    test_basic();
+    return 0;
+
+
+
 
     int fd2 = fs_open("hi.txt");
     char buf1[4] = {'H', 'i', 'i', '\0'};
@@ -37,28 +98,22 @@ int main(){
     fs_close(fd2);
 
     int fd3 = fs_open("whatever.txt");
-    char buf3[100];
+    char buf3[5000];
 
 	char data[10000];
     memset(&data, 97, 10000);
     data[9999] = '\0';
     fs_write(fd3, &data, sizeof(data));
-    fs_ls();
-    fs_lseek(fd3, 8191);
+    fs_lseek(fd3, 4095);
     fs_info();
 
-    fs_read(fd3, &buf3, 10);
+    fs_read(fd3, &buf3, 5000);
     printf("S: %s\n", buf3);
-    if(!fs_umount()){
-        printf("Unmount error\n");
-    }
-    else{
-        printf("open files\n");
-    }
     fs_close(fd3);
-    fs_info();
-    fs_delete("whatever.txt");
     fs_delete("test.txt");
     fs_ls();
+    fs_info();
     fs_umount();
 }
+
+
