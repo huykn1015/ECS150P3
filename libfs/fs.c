@@ -107,8 +107,7 @@ int get_free_fat(){
         fat_entry entries[BLOCK_SIZE / 2];
         block_read(i, &entries);
         for (int j = 0; j < BLOCK_SIZE / 2; j ++){
-            
-            if(loop == cur_super_block->data_block_count){
+            if(loop >= cur_super_block->data_block_count){
                 break;
             }
             loop ++;
@@ -127,9 +126,9 @@ int get_free_fat(){
  * entends a file by one data block, returns the index of the new data block
  * if file is empty,
 */
-int allocate_data_block(int fd){
+uint16_t allocate_data_block(int fd){
 	if(get_free_fat() == 0){
-		return -1;
+		return (uint16_t)-1;
 	}
 	int fn = open_files[fd].file_number;
 	struct rdir_entry rdir[FS_FILE_MAX_COUNT];
@@ -263,7 +262,7 @@ int delete_rdir_entry(struct rdir_entry * entries, const char * filename){
 	int i;
 	bool missing = true;
 	for (i = 0; i < FS_FILE_MAX_COUNT; i++){
-		if (strncmp(entries[i].file_name, filename, strlen(filename))){
+		if (!strncmp(entries[i].file_name, filename, strlen(filename))){
 			missing = false;
 			break;
 		}
@@ -292,7 +291,7 @@ int next_block(int fd, int cur_index){
 	uint16_t next_index = entries[cur_index % (BLOCK_SIZE / 2)];
 	if(next_index == EOC){
 		next_index = allocate_data_block(fd);
-		if (next_index == -1){
+		if (next_index == (uint16_t)-1){
 			return -1;
 		}
 	}
@@ -492,14 +491,14 @@ int fs_write(int fd, void *buf, size_t count){
 	uint8_t wbuf[BLOCK_SIZE];
 	if (count + (open_files[fd].offset % BLOCK_SIZE) > BLOCK_SIZE){
 		block_read(block_index(fd, open_files[fd].offset), &wbuf);
-		memcpy(&wbuf + open_files[fd].offset , buf, BLOCK_SIZE - (open_files[fd].offset % BLOCK_SIZE));
+		memcpy(&wbuf[(open_files[fd].offset % BLOCK_SIZE)], buf, BLOCK_SIZE - (open_files[fd].offset % BLOCK_SIZE));
 		block_write(block_index(fd,open_files[fd].offset), &wbuf);
 		increase_file_size(fd, BLOCK_SIZE - (open_files[fd].offset % BLOCK_SIZE));
 	}
 	else{
 		block_read(block_index(fd, open_files[fd].offset), wbuf);
-		memcpy(&wbuf + open_files[fd].offset , buf, count);
-		block_write(block_index(fd,0), wbuf);
+		memcpy(&wbuf[(open_files[fd].offset % BLOCK_SIZE)], buf, count);
+		block_write(block_index(fd,open_files[fd].offset), wbuf);
 		increase_file_size(fd, count);
 		open_files[fd].offset += count;
 		return count;
@@ -507,9 +506,9 @@ int fs_write(int fd, void *buf, size_t count){
 	wcount = BLOCK_SIZE - open_files[fd].offset % BLOCK_SIZE;
 	buf += wcount;
 	open_files[fd].offset += wcount;
-	int new_index = next_block(fd, block_index(fd, 0));
+	uint16_t new_index = next_block(fd, block_index(fd, 0));
 	while (wcount + BLOCK_SIZE < count){
-		if(new_index == -1){
+		if(new_index ==(uint16_t) -1){
 			return wcount;
 		}
 		memcpy(&wbuf, buf, BLOCK_SIZE);
@@ -518,6 +517,9 @@ int fs_write(int fd, void *buf, size_t count){
 		increase_file_size(fd, BLOCK_SIZE);
 		new_index = next_block(fd, new_index);
 		wcount+= BLOCK_SIZE;
+	}
+	if(new_index == (uint16_t)-1){
+		return wcount;
 	}
 	memset(&wbuf, 0, sizeof(wbuf));
 	memcpy(&wbuf, buf, count - wcount);
