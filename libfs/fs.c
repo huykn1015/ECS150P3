@@ -168,13 +168,12 @@ int block_index(int fd, size_t offset){
 	struct rdir_entry entries[FS_FILE_MAX_COUNT];
 	block_read(cur_super_block->root_index, &entries);
 	uint16_t data_index = entries[fn].data_index;
-	if(entries[fn].file_size < offset){
+	if(entries[fn].file_size < (int32_t)offset){
 		return -1;
 	}
 	int block_count = offset / BLOCK_SIZE;
 	while(data_index != EOC && block_count > 0){
 		fat_entry entries[BLOCK_SIZE / 2];
-		fat_entry old_index = data_index;
 		get_fat_page(data_index, (fat_entry * )&entries);
 		data_index = entries[data_index % (BLOCK_SIZE / 2)];
 		block_count--;
@@ -205,7 +204,7 @@ int create_file_entry(struct rdir_entry * entries, const char * filename){
 	if(rdir_full){
 		return -1;
 	}
-	strcpy(entries[i].file_name, filename);
+	strcpy((char *) entries[i].file_name, filename);
 	entries[i].data_index = EOC;
 	entries[i].file_size = 0;
 	return 0;
@@ -262,7 +261,7 @@ int delete_rdir_entry(struct rdir_entry * entries, const char * filename){
 	int i;
 	bool missing = true;
 	for (i = 0; i < FS_FILE_MAX_COUNT; i++){
-		if (!strncmp(entries[i].file_name, filename, strlen(filename))){
+		if (!strncmp((char*)entries[i].file_name, filename, strlen(filename))){
 			missing = false;
 			break;
 		}
@@ -381,7 +380,7 @@ int fs_create(const char *filename){
 		return -1;
 	}
 	for (int i = 0; i < FS_FILE_MAX_COUNT; i++){
-		if (!strncmp(entries[i].file_name, filename, strlen(filename))){
+		if (!strncmp((char*)entries[i].file_name, filename, strlen(filename))){
 			return -1;
 		}
 	}
@@ -438,7 +437,7 @@ int fs_open(const char *filename){
 	int i;
 	bool missing = true;
 	for (i = 0; i < FS_FILE_MAX_COUNT; i++){
-		if (!strncmp(entries[i].file_name, filename, strlen(filename))){
+		if (!strncmp((char*)entries[i].file_name, filename, strlen(filename))){
 			missing = false;
 			break;
 		}
@@ -474,6 +473,12 @@ int fs_lseek(int fd, size_t offset)
 	if(fd >= FS_OPEN_MAX_COUNT || (open_files[fd].file_number == 0xFF)){
 		return -1;
 	}
+	struct rdir_entry entries[FS_FILE_MAX_COUNT];
+	block_read(cur_super_block->root_index, &entries);
+	if((int32_t)offset > entries[open_files[fd].file_number].file_size){
+		return -1;
+	}
+	
 	open_files[fd].offset = offset;
 	return 0;
 }
@@ -515,7 +520,7 @@ int fs_write(int fd, void *buf, size_t count){
 	buf += wcount;
 	open_files[fd].offset += wcount;
 	uint16_t new_index = next_block(fd, block_index(fd, 0));
-	while (wcount + BLOCK_SIZE < count){
+	while (wcount + BLOCK_SIZE < (int)count){
 		if(new_index ==(uint16_t) -1){
 			return wcount;
 		}
@@ -556,7 +561,7 @@ int fs_read(int fd, void *buf, size_t count){
 	else{
 		block_read(block_index(fd, open_files[fd].offset), &inbuf);
 		memcpy(buf, (char *) &inbuf[(open_files[fd].offset % BLOCK_SIZE)], count);
-		if(open_files[fd].offset + count > file_size){
+		if(open_files[fd].offset + count > (size_t) file_size){
 			int ret = file_size - open_files[fd].offset;
 			open_files[fd].offset = file_size;
 			return ret;
@@ -567,10 +572,10 @@ int fs_read(int fd, void *buf, size_t count){
 	rcount = BLOCK_SIZE - (open_files[fd].offset % BLOCK_SIZE);
 	buf += rcount;
 	open_files[fd].offset += rcount;
-	while (rcount + BLOCK_SIZE < count){
+	while (rcount + BLOCK_SIZE < (int)count){
 		block_read(block_index(fd, open_files[fd].offset), &inbuf);
 		memcpy(buf, &inbuf, BLOCK_SIZE);
-		if(BLOCK_SIZE + open_files[fd].offset > file_size){
+		if(BLOCK_SIZE + open_files[fd].offset > (size_t)file_size){
 			int ret = rcount + (file_size - open_files[fd].offset);
 			open_files[fd].offset = file_size;
 			return ret;
@@ -582,7 +587,7 @@ int fs_read(int fd, void *buf, size_t count){
 	memset(&inbuf, 0, sizeof(inbuf));
 	block_read(block_index(fd, open_files[fd].offset), &inbuf);
 	memcpy(buf, inbuf, count - rcount);
-	if((count - rcount) + open_files[fd].offset > file_size){
+	if((count - rcount) + open_files[fd].offset > (size_t) file_size){
 		int ret = rcount + (file_size - open_files[fd].offset);
 		open_files[fd].offset = file_size;
 		return ret;

@@ -1,6 +1,6 @@
 
 CC := gcc
-CFLAGS := 
+CFLAGS := -Wall -Wextra -Werror 
 
 LIB := libfs.a
 OBJS = disk.o fs.o
