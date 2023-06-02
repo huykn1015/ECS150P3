@@ -13,6 +13,12 @@
 
 
 int test_basic(){
+    if(!fs_mount("dne.fs")){
+       printf("Mount error\n"); 
+    }
+    else{
+        printf("FS does not exist\n");
+    }
     fs_mount("test.fs");
     if(!fs_mount("test2.fs")){
        printf("Mount error\n"); 
@@ -28,6 +34,13 @@ int test_basic(){
     printf("Read: %s\n", buf);
     printf("Size: %i\n", fs_stat(fd));
     fs_create("hi.txt");
+    if(fs_create("hi.txt")){
+        printf("Filename taken\n");
+    }
+    else{
+        printf("File creation error\n");
+        return -1;
+    }
     fs_create("idk.txt");
     fs_create("whatever.txt");
     //test write and lseek
@@ -149,12 +162,8 @@ int test_multi_block_read_write(){
 }
 
 
-int test_eof_read(){
-    return 0;
-}
 
 int test_no_space_write(){
-    printf("=========\n");
     if(fs_mount("test_EOF.fs")){
        printf("Mount error\n"); 
     }
@@ -171,7 +180,7 @@ int test_no_space_write(){
     printf("written: %i\n", ret);
     fs_lseek(fd3, 0);
     char rbuf[100];
-    fs_read(fd3, &rbuf, 100);
+    fs_read(fd3, &rbuf, 10);
     printf("r: %s\n", rbuf);
     fs_close(fd3);
     fs_info();

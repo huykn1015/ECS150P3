@@ -24,7 +24,7 @@ struct super_block{
 };
 
 struct rdir_entry{
-	uint8_t file_name[16];
+	uint8_t file_name[FS_FILENAME_LEN];
 	int32_t file_size;
 	uint16_t data_index;
 	int8_t padding[10];
@@ -377,8 +377,13 @@ int fs_info(void){
 int fs_create(const char *filename){
 	struct rdir_entry entries[FS_FILE_MAX_COUNT];
 	block_read(cur_super_block->root_index, &entries);
-	if (!cur_super_block || strlen(filename) > FS_FILENAME_LEN){
+	if (!cur_super_block || strlen(filename) >= FS_FILENAME_LEN){
 		return -1;
+	}
+	for (int i = 0; i < FS_FILE_MAX_COUNT; i++){
+		if (!strncmp(entries[i].file_name, filename, strlen(filename))){
+			return -1;
+		}
 	}
 	if(create_file_entry((struct rdir_entry *)&entries, filename)){
 		return -1;
@@ -388,7 +393,7 @@ int fs_create(const char *filename){
 }
 
 int fs_delete(const char *filename){
-	if (!cur_super_block || strlen(filename) > FS_FILENAME_LEN){
+	if (!cur_super_block || strlen(filename) >= FS_FILENAME_LEN){
 		return -1;
 	}
 	struct rdir_entry entries[FS_FILE_MAX_COUNT];
@@ -447,7 +452,7 @@ int fs_open(const char *filename){
 }
 
 int fs_close(int fd){
-	if (cur_super_block == NULL || open_files[fd].file_number == 0xFF){
+	if (cur_super_block == NULL || open_files[fd].file_number == 0xFF || fd >= FS_OPEN_MAX_COUNT){
 		return -1;
 	}
 	open_files[fd].file_number = 0xFF;
@@ -456,6 +461,9 @@ int fs_close(int fd){
 }
 
 int fs_stat(int fd){
+	if(!cur_super_block || fd >= FS_OPEN_MAX_COUNT || open_files[fd].file_number == 0xFF){
+		return -1;
+	}
 	struct rdir_entry entries[FS_FILE_MAX_COUNT];
 	block_read(cur_super_block->root_index, &entries);
 	return entries[open_files[fd].file_number].file_size;
