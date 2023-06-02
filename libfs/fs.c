@@ -367,7 +367,7 @@ int fs_info(void){
 	printf("FS Info:\n");
 	printf("total_blk_count=%i\n", cur_super_block->block_count);
 	printf("fat_blk_count=%i\n", cur_super_block->fat_count);
-	printf("rdir_block=%i\n", cur_super_block->root_index);
+	printf("rdir_blk=%i\n", cur_super_block->root_index);
 	printf("data_blk=%i\n", cur_super_block->data_start_index);
 	printf("data_blk_count=%i\n", cur_super_block->data_block_count);
 	printf("fat_free_ratio=%i/%i\n", get_free_fat(), cur_super_block-> data_block_count);
@@ -474,6 +474,9 @@ int fs_lseek(int fd, size_t offset)
 int fs_write(int fd, void *buf, size_t count){
 	if(fd < 0 || fd >= FS_OPEN_MAX_COUNT || buf == NULL || cur_super_block == NULL){
 		return -1;
+	}
+	if(count == 0){
+		return 0;
 	}
 	int wcount = 0;
     int fn = open_files[fd].file_number;

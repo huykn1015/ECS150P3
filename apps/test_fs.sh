@@ -15,6 +15,7 @@ fs_make.x test_EOF.fs 5
 fs_make.x test.fs 1000
 fs_make.x test_rdir.fs 1000
 fs_ref.x add test.fs test.txt
+fs_ref.x add test.fs test2.txt
 stest.x
 
 
