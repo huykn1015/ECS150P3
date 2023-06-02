@@ -30,6 +30,20 @@ int test_basic(){
     fs_create("hi.txt");
     fs_create("idk.txt");
     fs_create("whatever.txt");
+    //test write and lseek
+    // writes 4 characters, attempts to read
+    int fd2 = fs_open("hi.txt");
+    char buf1[4] = {'H', 'i', 'i', '\0'};
+    char buf2[100];
+    fs_write(fd2, &buf1, 4);
+    fs_lseek(fd2, 2);
+    int ret = fs_read(fd2, &buf2, 4);
+    printf("%i Bytes read\n", ret);
+    printf("S: %s\n", buf2);
+    fs_lseek(fd2, 0);
+    fs_read(fd2, &buf2, 4);
+    printf("S: %s\n", buf2);
+    fs_close(fd2);
     fs_ls();
     fs_delete("text.txt");
     fs_ls();
@@ -91,25 +105,36 @@ int test_open_file_max(){
     if(fd == -1){
         printf("open files full\n");
     }
+    for( int i = 0; i < 32; i ++){
+        fs_close(i);
+    }
+    fs_umount();
     return 0;
 }
 
 
-int test_inter_block_write(){
+int test_multi_block_read_write(){
+    //writes 10k 'a' across 3 blocks
+    //then attemps to read 5k 'a' across 3 blocks
+    if(!fs_mount("test.fs")){
+       printf("Mount error\n"); 
+    }
+    int fd3 = fs_open("whatever.txt");
+    char buf3[10000];
+	char data[10000];
+    memset(&data, 97, 10000);
+    data[9999] = '\0';
+    fs_write(fd3, &data, sizeof(data));
+    fs_lseek(fd3, 4095);
+    fs_info();
+
+    fs_read(fd3, &buf3, 5000);
+    printf("S: %s\n", buf3);
+    fs_close(fd3);
+    fs_umount();
     return 0;
 }
 
-int test_inter_block_read(){
-    return 0;
-}
-
-int test_multi_block_write(){
-    return 0;
-}
-
-int test_multi_block_read(){
-    return 0;
-}
 
 int test_eof_read(){
     return 0;
@@ -125,35 +150,12 @@ int main(){
     test_basic();
     test_full_rdir();
     test_open_file_max();
+    test_multi_block_read_write();
     return 0;
 
 
 
 
-    int fd2 = fs_open("hi.txt");
-    char buf1[4] = {'H', 'i', 'i', '\0'};
-    char buf2[100];
-    fs_write(fd2, &buf1, 4);
-    fs_read(fd2, &buf2, 4);
-    printf("S: %s\n", buf2);
-    fs_lseek(fd2, 0);
-    fs_read(fd2, &buf2, 4);
-    printf("S: %s\n", buf2);
-    fs_close(fd2);
-
-    int fd3 = fs_open("whatever.txt");
-    char buf3[5000];
-
-	char data[10000];
-    memset(&data, 97, 10000);
-    data[9999] = '\0';
-    fs_write(fd3, &data, sizeof(data));
-    fs_lseek(fd3, 4095);
-    fs_info();
-
-    fs_read(fd3, &buf3, 5000);
-    printf("S: %s\n", buf3);
-    fs_close(fd3);
     fs_delete("test.txt");
     fs_ls();
     fs_info();
