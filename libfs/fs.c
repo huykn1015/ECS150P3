@@ -152,7 +152,7 @@ uint16_t allocate_data_block(int fd){
 	get_fat_page(data_index, (fat_entry * )&entries);
 	entries[data_index % (BLOCK_SIZE / 2)] = EOC;
 	write_fat_page(data_index, (short int *)&entries);
-	block_write(cur_super_block->root_index, rdir);	
+	block_write(cur_super_block->root_index, rdir);
 	return data_index;
 }
 
@@ -269,6 +269,14 @@ int delete_rdir_entry(struct rdir_entry * entries, const char * filename){
 	if(missing){
 		return -1;
 	}
+
+	for (int j = 0; j < FS_OPEN_MAX_COUNT; j++){
+		if(open_files[j].file_number == i){
+			return -1;
+		}
+	}
+
+
 	clear_fat(entries[i].data_index);
 	memset(&entries[i], 0, sizeof(struct rdir_entry));
 	return 0;
@@ -288,7 +296,7 @@ int next_block(int fd, int cur_index){
 	fat_entry entries[BLOCK_SIZE / 2];
 	get_fat_page(cur_index, (fat_entry * )&entries);
 	uint16_t next_index = entries[cur_index % (BLOCK_SIZE / 2)];
-	if(next_index == EOC){
+	if(next_index == EOC || cur_index == EOC){
 		next_index = allocate_data_block(fd);
 		if (next_index == (uint16_t)-1){
 			return -1;
@@ -330,9 +338,16 @@ int fs_mount(const char *diskname){
 	cur_super_block = malloc(sizeof(uint8_t) * BLOCK_SIZE);
 	block_read(0,cur_super_block);
 	if (strncmp((char * )cur_super_block->signature, "ECS150FS", 8)){
+		
+		free(cur_super_block);
+		cur_super_block = NULL;
+		block_disk_close();
 		return -1;
 	} 
 	if((int)block_disk_count() != (int)cur_super_block->block_count){
+		free(cur_super_block);
+		cur_super_block = NULL;
+		block_disk_close();
 		return -1;
 	}
 	for(int i = 0; i <FS_OPEN_MAX_COUNT; i ++ ){
@@ -352,7 +367,7 @@ int fs_umount(void){
 			return -1;
 		}
 	}
-	memset(cur_super_block, 0, sizeof(uint8_t) * BLOCK_SIZE);
+	free(cur_super_block);
 	cur_super_block = NULL;
 	return block_disk_close();
 	/* TODO: Phase 1 */
@@ -495,6 +510,7 @@ int fs_write(int fd, void *buf, size_t count){
     struct rdir_entry rdir[FS_FILE_MAX_COUNT];
     block_read(cur_super_block->root_index, &rdir);	
     uint16_t data_index = rdir[fn].data_index;
+	long unsigned int init_off = (long unsigned int)open_files[fd].offset;
     if(data_index == EOC){
         int ret = allocate_data_block(fd);
 		if (ret == -1){
@@ -506,40 +522,57 @@ int fs_write(int fd, void *buf, size_t count){
 		block_read(block_index(fd, open_files[fd].offset), &wbuf);
 		memcpy(&wbuf[(open_files[fd].offset % BLOCK_SIZE)], buf, BLOCK_SIZE - (open_files[fd].offset % BLOCK_SIZE));
 		block_write(block_index(fd,open_files[fd].offset), &wbuf);
-		increase_file_size(fd, BLOCK_SIZE - (open_files[fd].offset % BLOCK_SIZE));
+		if(BLOCK_SIZE - (open_files[fd].offset % BLOCK_SIZE) > (long unsigned int)fs_stat(fd)){
+			increase_file_size(fd, BLOCK_SIZE - (open_files[fd].offset % BLOCK_SIZE));
+		}
 	}
 	else{
-		block_read(block_index(fd, open_files[fd].offset), wbuf);
+		block_read(block_index(fd, open_files[fd].offset), &wbuf);
 		memcpy(&wbuf[(open_files[fd].offset % BLOCK_SIZE)], buf, count);
-		block_write(block_index(fd,open_files[fd].offset), wbuf);
-		increase_file_size(fd, count);
+		block_write(block_index(fd,open_files[fd].offset), &wbuf);
 		open_files[fd].offset += count;
+		if(count + init_off > (long unsigned int) fs_stat(fd)){
+			increase_file_size(fd, count);
+		}
 		return count;
 	}
 	wcount = BLOCK_SIZE - open_files[fd].offset % BLOCK_SIZE;
 	buf += wcount;
 	open_files[fd].offset += wcount;
-	uint16_t new_index = next_block(fd, block_index(fd, 0));
+	uint16_t new_index = next_block(fd, block_index(fd, open_files[fd].offset));
 	while (wcount + BLOCK_SIZE < (int)count){
 		if(new_index ==(uint16_t) -1){
+			if(wcount + init_off > (long unsigned int)fs_stat(fd)){
+				increase_file_size(fd, wcount);
+			}
 			return wcount;
 		}
-		memcpy(&wbuf, buf, BLOCK_SIZE);
+		block_read(new_index, &wbuf);
+		memcpy(&wbuf[open_files[fd].offset % BLOCK_SIZE], buf, BLOCK_SIZE);
 		buf += BLOCK_SIZE;
 		block_write(new_index, wbuf);
-		increase_file_size(fd, BLOCK_SIZE);
+		if(open_files[fd].offset + BLOCK_SIZE > (long unsigned int)fs_stat(fd)){
+			increase_file_size(fd, BLOCK_SIZE);
+		}
 		new_index = next_block(fd, new_index);
 		wcount+= BLOCK_SIZE;
+		open_files[fd].offset += BLOCK_SIZE;
 	}
 	if(new_index == (uint16_t)-1){
+		if(wcount + open_files[fd].offset > (long unsigned int)fs_stat(fd)){
+			increase_file_size(fd, wcount);
+		}
 		return wcount;
 	}
-	memset(&wbuf, 0, sizeof(wbuf));
-	memcpy(&wbuf, buf, count - wcount);
+	block_read(new_index, &wbuf);
+	memcpy(&wbuf[open_files[fd].offset % BLOCK_SIZE], buf, count - wcount);
 	block_write(new_index, &wbuf);
-	increase_file_size(fd, count - wcount);
+	if(count + init_off > (long unsigned int)fs_stat(fd)){
+		increase_file_size(fd, count - wcount);
+	}
+	open_files[fd].offset += count - wcount;
 	wcount += count - wcount;
-	return wcount;
+	return count;
 }
 
 
@@ -586,12 +619,12 @@ int fs_read(int fd, void *buf, size_t count){
 	}
 	memset(&inbuf, 0, sizeof(inbuf));
 	block_read(block_index(fd, open_files[fd].offset), &inbuf);
-	memcpy(buf, inbuf, count - rcount);
+	memcpy(buf, &inbuf, count - rcount);
 	if((count - rcount) + open_files[fd].offset > (size_t) file_size){
 		int ret = rcount + (file_size - open_files[fd].offset);
 		open_files[fd].offset = file_size;
 		return ret;
 	}
 	open_files[fd].offset += count - rcount;
-	return rcount;
+	return count;
 }
