@@ -113,7 +113,7 @@ int test_basic(){
 }
 
 int test_full_rdir(){
-    printf("===== Testing creating too many files =====");
+    printf("===== Testing creating too many files =====\n");
     if(fs_mount("test_rdir.fs")){
         printf("open failed\n");
         return -1;
@@ -184,6 +184,11 @@ int test_multi_block_read_write(){
     fs_lseek(fd3, 0);
     fs_read(fd3, &buf3, 9000);
     printf("S: %s\n", buf3);
+
+    fs_lseek(fd3, 0);
+    memset(&buf3, 0, 10000);
+    int rnum = fs_read(fd3, &buf3, 12000);
+    printf("Read %i bytes\n",rnum);
     printf("\n\n");
     fs_close(fd3);
     fs_info();
@@ -254,6 +259,7 @@ int test_overwrite(){
     memset(&rbuf, 0 , 100);
     fs_read(fd3, &rbuf, 10);
     printf("r: %s\n", rbuf);
+
     fs_close(fd3);
     fs_info();
     fs_ls();
