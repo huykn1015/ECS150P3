@@ -538,8 +538,8 @@ int fs_write(int fd, void *buf, size_t count){
 	}
 	wcount = BLOCK_SIZE - open_files[fd].offset % BLOCK_SIZE;
 	buf += wcount;
-	open_files[fd].offset += wcount;
 	uint16_t new_index = next_block(fd, block_index(fd, open_files[fd].offset));
+	open_files[fd].offset += wcount;
 	while (wcount + BLOCK_SIZE < (int)count){
 		if(new_index ==(uint16_t) -1){
 			if(wcount + init_off > (long unsigned int)fs_stat(fd)){
@@ -551,16 +551,14 @@ int fs_write(int fd, void *buf, size_t count){
 		memcpy(&wbuf[open_files[fd].offset % BLOCK_SIZE], buf, BLOCK_SIZE);
 		buf += BLOCK_SIZE;
 		block_write(new_index, wbuf);
-		if(open_files[fd].offset + BLOCK_SIZE > (long unsigned int)fs_stat(fd))
-		increase_file_size(fd, BLOCK_SIZE);
+		if(open_files[fd].offset + BLOCK_SIZE > (long unsigned int)fs_stat(fd)){
+			increase_file_size(fd, BLOCK_SIZE);
+		}
 		new_index = next_block(fd, new_index);
 		wcount+= BLOCK_SIZE;
 		open_files[fd].offset += BLOCK_SIZE;
 	}
 	if(new_index == (uint16_t)-1){
-		//if(wcount + open_files[fd].offset > (long unsigned int)fs_stat(fd)){
-			//increase_file_size(fd, wcount);
-		//}
 		return wcount;
 	}
 	block_read(new_index, &wbuf);

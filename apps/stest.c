@@ -78,7 +78,7 @@ int test_basic(){
     printf("\n\n");
     printf("----- Deletion -----\n");
 
-    if(fs_delete("hi.txt")){
+    if(fs_delete("idk.txt")){
         printf("File Still open\n");
     }
     else{
@@ -86,7 +86,12 @@ int test_basic(){
     }
     fs_close(fd);
     printf("\n\n");
-    fs_delete("hi.txt");
+    if(fs_delete("hi.txt")){
+        printf("Deletion Error\n");
+    }
+    else{
+        printf("idk.txt deleted\n");
+    }
     fs_info();
     fs_ls();
     fd = fs_open("test.txt"); 
@@ -97,8 +102,11 @@ int test_basic(){
     else{
         printf("Files currently open\n");
     }
+    printf("Closing file\n");
     fs_close(fd);
     fs_delete("test.txt");
+
+    printf("Attempting Unmount again\n");
     if(!fs_umount()){
         printf("Unmount Successful\n");
     }
@@ -118,7 +126,7 @@ int test_full_rdir(){
         printf("open failed\n");
         return -1;
     }
-    printf("rdir test\n");
+    printf("Creating Files\n");
     char name[9] = "File_.txt";
     for( int i = 0; i < 128; i ++){
         name[4] = i;
@@ -128,8 +136,9 @@ int test_full_rdir(){
         printf("create error\n");
     }
     else{
-        printf("rdir full\n");
+        printf("cannot create file, rdir full\n");
     }
+    fs_info();
     fs_umount();
 
     printf("\n\n");
@@ -142,6 +151,7 @@ int test_open_file_max(){
         printf("open failed\n");
         return -1;
     }
+    printf("Opening Files\n");
     char name[9] = "File_.txt";
     for( int i = 0; i < 32; i ++){
         name[4] = i;
@@ -193,6 +203,7 @@ int test_multi_block_read_write(){
     fs_close(fd3);
     fs_info();
     fs_ls();
+    printf("----- Testing Large File Deletion -----\n");
     fs_delete("whatever.txt");
     fs_info();
     fs_ls();
@@ -247,6 +258,7 @@ int test_overwrite(){
     memset(&data2, 98, 5000);
     data[9999] = '\0';
     int ret = fs_write(fd3, &data, sizeof(data));
+    fs_info();
     printf("written: %i\n", ret);
     fs_lseek(fd3, 4095);
     char rbuf[100];
